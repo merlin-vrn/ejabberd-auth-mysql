@@ -6,7 +6,9 @@ This is an external authentication script for [ejabberd](https://www.ejabberd.im
 Usage
 =====
 
-Make sure that you have Python 2 installed and that `/usr/bin/python` points to it (check by running `/usr/bin/python --version`, make sure that it says `Python 2.x.x` instead of `Python 3.x.x`).
+Make sure that you have Python 3 installed and that `/usr/bin/python` points to it (check by running `/usr/bin/python3 --version`, make sure that it says `Python 3.x.x` instead of `Python 3.x.x`).
+
+You will also need the Python 3 MySQLdb module.
 
 Configure ejabberd to use `auth_mysql.py` from this repository as an external authentication provider, as described in the [ejabberd docs](http://docs.ejabberd.im/admin/guide/configuration/#external-script):
 

@@ -51,15 +51,15 @@ logging.basicConfig(level=logging.INFO,
 MySQLdb.paramstyle = 'pyformat'
 
 try:
-	database=MySQLdb.connect(db_host, db_user, db_pass, db_name)
+    database=MySQLdb.connect(db_host, db_user, db_pass, db_name)
 except:
-	logging.error("Unable to initialize database, check settings!")
-	time.sleep(10)
-	sys.exit(1)
+    logging.error("Unable to initialize database, check settings!")
+    time.sleep(10)
+    sys.exit(1)
 
 @atexit.register
 def close_db():
-	database.close()
+    database.close()
 
 logging.info('extauth script started, waiting for ejabberd requests')
 
@@ -75,130 +75,139 @@ class EjabberdInputError(Exception):
 ########################################################################
 
 def ejabberd_in():
-	logging.debug("trying to read 2 bytes from ejabberd:")
+    logging.debug("trying to read 2 bytes from ejabberd:")
 
-	input_length = sys.stdin.buffer.read(2)
+    input_length = sys.stdin.buffer.read(2)
 
-	if len(input_length) is not 2:
-		logging.debug("ejabberd sent us wrong things!")
-		raise EjabberdInputError('Wrong input from ejabberd!')
+    if len(input_length) == 0:
+        logging.info('ejabberd exiting')
+        raise EOFError()
+    elif len(input_length) != 2:
+        logging.debug("expected to get 2 bytes, received " + str(len(input_length)) + ": " + input_length.hex())
+        raise EjabberdInputError('Wrong input from ejabberd!')
 
-	logging.debug('got 2 bytes via stdin: %s'%input_length)
+    logging.debug('got 2 bytes via stdin: %s'%input_length)
 
-	(size,) = struct.unpack('>h', input_length)
-	logging.debug('size of data: %i'%size)
+    (size,) = struct.unpack('>h', input_length)
+    logging.debug('size of data: %i'%size)
 
-	income=sys.stdin.read(size)
-	logging.debug("incoming data: %s"%income)
+    income=sys.stdin.buffer.read(size).decode(sys.stdin.encoding)
+    logging.debug("incoming data: %s"%income)
 
-	return income
+    return income
 
 
 def ejabberd_out(bool):
-	logging.debug("Ejabberd gets: %s" % bool)
+    logging.debug("Ejabberd gets: %s" % bool)
 
-	token = genanswer(bool)
+    token = genanswer(bool)
 
-	logging.debug("sent bytes: %#x %#x %#x %#x" % (token[0], token[1], token[2], token[3]))
+    logging.debug("sent bytes: %#x %#x %#x %#x" % (token[0], token[1], token[2], token[3]))
 
-	sys.stdout.buffer.write(token)
-	sys.stdout.buffer.flush()
+    sys.stdout.buffer.write(token)
+    sys.stdout.buffer.flush()
 
 
 def genanswer(bool):
-	answer = 0
-	if bool:
-		answer = 1
-	token = struct.pack('>hh', 2, answer)
-	return token
+    answer = 0
+    if bool:
+        answer = 1
+    token = struct.pack('>hh', 2, answer)
+    return token
 
 
 def password_hash(password, old_password=None):
-	if old_password == None:
-		old_password = '$6$'+''.join(random.choice("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ./") for i in range(16))
+    if old_password == None:
+        old_password = '$6$'+''.join(random.choice("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ./") for i in range(16))
 
-	if db_hashalg == "crypt":
-		return crypt.crypt(password, old_password)
-	elif db_hashalg == "":
-		return password
-	else:
-		hasher = hashlib.new(db_hashalg)
-		hasher.update(password)
-		return hasher.hexdigest()
+    if db_hashalg == "crypt":
+        return crypt.crypt(password, old_password)
+    elif db_hashalg == "":
+        return password
+    else:
+        hasher = hashlib.new(db_hashalg)
+        hasher.update(password)
+        return hasher.hexdigest()
 
 
 def get_password(user, host):
-	database.ping(True)
-	with database as dbcur:
-		dbcur.execute(db_query_getpass, {"user": user, "host": host})
-		data = dbcur.fetchone()
-		return data[0] if data != None else None;
+    database.ping(True)
+    dbcur = database.cursor()
+    dbcur.execute(db_query_getpass, {"user": user, "host": host})
+    data = dbcur.fetchone()
+    dbcur.close()
+    return data[0] if data != None else None;
 
 
 def isuser(user, host):
-	return get_password(user, host) != None
+    return get_password(user, host) != None
 
 
 def auth(user, host, password):
-	db_password = get_password(user, host)
-	if db_password == None:
-		logging.debug("Wrong username: %s@%s" % (user, host))
-		return False
-	else:
-		if password_hash(password, db_password) == db_password:
-			return True
-		else:
-			logging.debug("Wrong password for user: %s@%s" % (user, host))
-			return False
+    db_password = get_password(user, host)
+    if db_password == None:
+        logging.debug("Wrong username: %s@%s" % (user, host))
+        return False
+    else:
+        if password_hash(password, db_password) == db_password:
+            return True
+        else:
+            logging.debug("Wrong password for user: %s@%s" % (user, host))
+            return False
 
 
 def setpass(user, host, password):
-	if db_query_setpass == "":
-		return False
+    if db_query_setpass == "":
+        return False
 
-	database.ping(True)
-	with database as dbcur:
-		dbcur.execute(db_query_setpass, {"user": user, "host": host, "password": password_hash(password)})
-		if dbcur.rowcount > 0:
-			return True
-		else:
-			logging.info("No rows found for user %s@%s to update password" % (user, host))
-			return False
+    database.ping(True)
+    dbcur = database.cursor()
+    dbcur.execute(db_query_setpass, {"user": user, "host": host, "password": password_hash(password)})
+    rowcount = dbcur.rowcount
+    dbcur.close()
+    if rowcount > 0:
+        return True
+    else:
+        logging.info("No rows found for user %s@%s to update password" % (user, host))
+        return False
 
 
 def tryregister(user, host, password):
-	if db_query_register == "":
-		return False
+    if db_query_register == "":
+        return False
 
-	if isuser(user, host):
-		logging.info("Could not register user %s@%s as it already exists." % (user, host))
-		return False
+    if isuser(user, host):
+        logging.info("Could not register user %s@%s as it already exists." % (user, host))
+        return False
 
-	database.ping(True)
-	with database as dbcur:
-		dbcur.execute(db_query_register, {"user": user, "host": host, "password": password_hash(password)})
-		return True
+    database.ping(True)
+    dbcur = database.cursor()
+    dbcur.execute(db_query_register, {"user": user, "host": host, "password": password_hash(password)})
+    dbcur.close()
+    return True
 
 
 def removeuser(user, host):
-	if db_query_unregister == "":
-		return False
+    if db_query_unregister == "":
+        return False
 
-	database.ping(True)
-	with database as dbcur:
-		dbcur.execute(db_query_unregister, {"user": user, "host": host})
-		if dbcur.rowcount > 0:
-			return True
-		else:
-			logging.debug("No rows found to remove user %s@%s" % (user, host))
-			return False
+    database.ping(True)
+    dbcur = database.cursor()
+    dbcur.execute(db_query_unregister, {"user": user, "host": host})
+    rowcount = dbcur.rowcount
+    dbcur.close()
+    if rowcount > 0:
+        return True
+    else:
+        logging.debug("No rows found to remove user %s@%s" % (user, host))
+        return False
 
 
 def removeuser3(user, host, password):
-	if db_query_unregister == "":
-		return False
+    if db_query_unregister == "":
+        return False
 
-	return auth(user, host, password) and removeuser(user, host)
+    return auth(user, host, password) and removeuser(user, host)
 
 
 ########################################################################
@@ -208,37 +217,38 @@ def removeuser3(user, host, password):
 exitcode=0
 
 while True:
-	logging.debug("start of infinite loop")
+    logging.debug("start of infinite loop")
 
-	try:
-		ejab_request = ejabberd_in().split(':', 3)
-	except EOFError:
-		break
-	except Exception as e:
-		logging.exception("Exception occured while reading stdin")
-		raise
+    try:
+        ejab_request = ejabberd_in().split(':', 3)
+    except EOFError:
+        break
+    except Exception as e:
+        logging.exception("Exception occured while reading stdin")
+        raise
 
-	op_result = False
-	try:
-		if ejab_request[0] == "auth":
-			op_result = auth(ejab_request[1], ejab_request[2], ejab_request[3])
-		elif ejab_request[0] == "isuser":
-			op_result = isuser(ejab_request[1], ejab_request[2])
-		elif ejab_request[0] == "setpass":
-			op_result = setpass(ejab_request[1], ejab_request[2], ejab_request[3])
-		elif ejab_request[0] == "tryregister":
-			op_result = tryregister(ejab_request[1], ejab_request[2], ejab_request[3])
-		elif ejab_request[0] == "removeuser":
-			op_result = removeuser(ejab_request[1], ejab_request[2])
-		elif ejab_request[0] == "removeuser3":
-			op_result = removeuser3(ejab_request[1], ejab_request[2], ejab_request[3])
-	except Exception:
-		logging.exception("Exception occured")
+    op_result = False
+    try:
+        if ejab_request[0] == "auth":
+            op_result = auth(ejab_request[1], ejab_request[2], ejab_request[3])
+        elif ejab_request[0] == "isuser":
+            op_result = isuser(ejab_request[1], ejab_request[2])
+        elif ejab_request[0] == "setpass":
+            op_result = setpass(ejab_request[1], ejab_request[2], ejab_request[3])
+        elif ejab_request[0] == "tryregister":
+            op_result = tryregister(ejab_request[1], ejab_request[2], ejab_request[3])
+        elif ejab_request[0] == "removeuser":
+            op_result = removeuser(ejab_request[1], ejab_request[2])
+        elif ejab_request[0] == "removeuser3":
+            op_result = removeuser3(ejab_request[1], ejab_request[2], ejab_request[3])
+    except Exception:
+        logging.exception("Exception occured")
 
-	ejabberd_out(op_result)
-	logging.debug("successful" if op_result else "unsuccessful")
+    ejabberd_out(op_result)
+    logging.debug("successful" if op_result else "unsuccessful")
 
 logging.debug("end of infinite loop")
 logging.info('extauth script terminating')
-database.close()
+#database.close()
+#or remove the atexit handler and then close the database here else it tries to close the database again and throws exception
 sys.exit(exitcode)

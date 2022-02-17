@@ -1,6 +1,6 @@
 #!/bin/bash
 
-PYTHON=${PYTHON:-/usr/bin/python}
+PYTHON=${PYTHON:-/usr/bin/python3}
 
 echo -n "Python version is: "
 "$PYTHON" --version
