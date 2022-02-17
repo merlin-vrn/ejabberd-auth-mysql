@@ -7,7 +7,8 @@
 #Requires Python 3
 #Author: iltl. Contact: iltl@free.fr
 #Author: Candid Dauth <cdauth@cdauth.eu>
-#Version: 2015-12-20
+#Author: Nikita Kipriyanov <nikita.kipriyanov@gmail.com
+#Version: 2022-02-17
 
 ########################################################################
 #DB Settings
